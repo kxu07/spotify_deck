@@ -6,8 +6,15 @@
 #include <TFT_eSPI.h>
 #include <HTTPClient.h>
 #include <TJpg_Decoder.h>
+#include <lvgl.h>
+#include <XPT2046_Touchscreen.h>
+// TODO: playback widgets + function, offloading to diff processors
 
-// TODO: horizontal text scrolling, playback widgets + function
+#define XPT2046_IRQ 36
+#define XPT2046_MOSI 32
+#define XPT2046_MISO 39
+#define XPT2046_CLK  25
+#define XPT2046_CS   33
 
 const char* ssid = "Device-Northwestern";
 const char* password = "";
@@ -23,12 +30,105 @@ int scrollPos = 0;
 unsigned long lastScrollTime = 0;
 const int scrollSpeed = 30;
 int singleLoopWidth = 0;
+bool isPlayingState = false;
 
 unsigned long lastCheckTime = 0;
 const unsigned long checkInterval = 5000;
 
 uint16_t backgroundBlue = tft.color565(179,232,252);
 uint16_t albumFrame = tft.color565(8,62,82);
+
+SPIClass touchSpi = SPIClass(VSPI);
+XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
+
+void setupTouch() {
+  touchSpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
+  touchscreen.begin(touchSpi);
+  touchscreen.setRotation(1); // Match screen rotation
+}
+
+
+
+void drawMediaControls() {
+  int btnW = 40;
+  int btnH = 35;
+  int gap = 20;
+  
+  // Center horizontally on full 320px screen: (320 - (40*3 + 15*2)) / 2 = 85
+  int startX = 80; 
+  int startY = 180; // Placed at bottom margin
+
+  for (int i = 0; i < 3; i++) {
+    int x = startX + i * (btnW + gap);
+    
+    // 1. Draw Button Box
+    tft.fillRect(x, startY, btnW, btnH, backgroundBlue);
+    tft.drawRect(x, startY, btnW, btnH, backgroundBlue);
+
+    // Vertical center offset for 14px icons in a 35px box
+    int iconY = startY + (btnH - 14) / 2; // Y = 200
+
+    // 2. Draw Centered Icons
+    if (i == 0) {
+      // PREVIOUS ICON (|<<) - Total width: 15px
+      int iconX = x + (btnW - 15) / 2;
+      tft.fillRect(iconX, iconY, 3, 14, TFT_BLACK); // Left bar
+      tft.fillTriangle(iconX + 15, iconY, iconX + 15, iconY + 14, iconX + 4, iconY + 7, TFT_BLACK); // Triangle
+    } 
+    else if (i == 1) {
+      // PLAY ICON (>) - Total width: 12px
+      int iconX = x + (btnW - 12) / 2;
+      tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 12, iconY + 7, TFT_BLACK);
+    } 
+    else if (i == 2) {
+      // NEXT ICON (>>|) - Total width: 15px
+      int iconX = x + (btnW - 15) / 2;
+      tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 11, iconY + 7, TFT_BLACK); // Triangle
+      tft.fillRect(iconX + 12, iconY, 3, 14, TFT_BLACK); // Right bar
+    }
+  }
+}
+
+void checkTouch() {
+  // Direct pressure check instead of relying on hardware IRQ pin
+  if (touchscreen.touched()) {
+    TS_Point p = touchscreen.getPoint();
+
+    // Ignore ghost/light touches (minimum pressure threshold)
+    if (p.z > 400) { 
+      int x = map(p.x, 200, 3700, 1, 320);
+      int y = map(p.y, 240, 3800, 1, 240);
+
+      Serial.printf("RAW: X=%d Y=%d Z=%d | MAPPED: X=%d Y=%d\n", p.x, p.y, p.z, x, y);
+
+      if (y >= 190 && y <= 225) {
+        if (x >= 85 && x <= 125) {
+          Serial.println("Spotify: Skip Previous");
+          spotify.previousTrack();
+          lastCheckTime = 0;
+          delay(300);
+        } else if (x >= 140 && x <= 180) {
+          if (isPlayingState) {
+            Serial.println("Spotify: Pausing...");
+            spotify.pause();
+            isPlayingState = false; // Optimistically update state
+          } else {
+            Serial.println("Spotify: Playing...");
+            spotify.play();
+            isPlayingState = true;  // Optimistically update state
+          }
+          lastCheckTime = 0;
+          delay(300);
+        } else if (x >= 195 && x <= 235) {
+          Serial.println("Spotify: Skip Next");
+          spotify.nextTrack();
+          lastCheckTime = 0;
+          delay(300);
+        }
+      }
+    }
+  }
+}
 
 void setupTitleSprite(String trackName) {
   tft.setTextSize(2);
@@ -109,6 +209,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
   static String lastAlbumArtUrl = "";
   static String lastSong = "";
   static bool wasPlaying=false;
+  isPlayingState = currentlyPlaying.isPlaying;
   if (currentlyPlaying.isPlaying) {
     String currentArt = currentlyPlaying.albumImages[1].url;
     if (currentArt != lastAlbumArtUrl || !wasPlaying) {
@@ -119,6 +220,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
     }
     String currentSong = currentlyPlaying.trackName;
     if (currentSong != lastSong || !wasPlaying) {
+      drawMediaControls();
       lastSong = currentSong;
       Serial.println("\n--------------------------------");
       Serial.print("Track:  ");
@@ -139,7 +241,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
       tft.setCursor(170, 150);
       tft.print(currentlyPlaying.artists[0].artistName);
     }
-  } else {
+  } else if (false) {
     if (wasPlaying) {
       wasPlaying = false;
       lastAlbumArtUrl = "";
@@ -147,16 +249,16 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
     }
     tft.fillScreen(backgroundBlue);
     tft.setTextColor(TFT_BLACK, backgroundBlue);
+    titleSprite.deleteSprite();
     Serial.println("Spotify is idle or paused");
     tft.drawCentreString("Spotify not playing", 160, 115, 4);
   }
 }
 
-
 void setup() {
   Serial.begin(115200);
   delay(1000);
-
+  setupTouch();
   tft.init();
   tft.setRotation(1);
   tft.fillScreen(TFT_WHITE);
@@ -196,8 +298,17 @@ void setup() {
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tft_output);
 }
+void checkTouchDiagnostic() {
+  if (touchscreen.touched()) {
+    TS_Point p = touchscreen.getPoint();
+    Serial.printf("Touch Registered! Raw X: %d | Raw Y: %d | Pressure Z: %d\n", p.x, p.y, p.z);
+    delay(100);
+  }
+}
 
 void loop() {
+  checkTouch();
+  checkTouchDiagnostic();
   if (millis() - lastCheckTime > checkInterval) {
     lastCheckTime = millis();
     Serial.println("Retrieving currentlyplaying information");
