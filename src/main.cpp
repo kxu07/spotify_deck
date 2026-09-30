@@ -24,7 +24,7 @@ const char* password = "";
 const char* ntpServer = "pool.ntp.org";
 const char* timeZone = "CST6CDT,M3.2.0,M11.1.0";
 const char* clientId = "15305a1ef8a8454a9575d0ed2f05e2ca";
-const char* clientSecret = "7d637dfb0ba341ff8d8be0342c0dbbc1";
+const char* clientSecret = "";
 const char* refreshToken = "AQBj92TmuMIZ3VHt9MJkAkUs9EesUR3mA99xAxAORm6JNTVJ7zWGx-4Ktk5tkEmo97k_ZAGFkE43VGWlzoWTcLAc-vweP8vbpaqvqDwmYGVBgepCiXL7mRHg4Y_lCCtoZfE";
 
 WiFiClientSecure client;
