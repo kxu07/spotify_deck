@@ -7,6 +7,8 @@
 #include <HTTPClient.h>
 #include <TJpg_Decoder.h>
 
+// TODO: horizontal text scrolling, playback widgets + function
+
 const char* ssid = "Device-Northwestern";
 const char* password = "";
 const char* clientId = "15305a1ef8a8454a9575d0ed2f05e2ca";
@@ -20,11 +22,56 @@ TFT_eSprite titleSprite = TFT_eSprite(&tft);
 int scrollPos = 0;
 unsigned long lastScrollTime = 0;
 const int scrollSpeed = 30;
+int singleLoopWidth = 0;
 
 unsigned long lastCheckTime = 0;
 const unsigned long checkInterval = 5000;
 
 uint16_t backgroundBlue = tft.color565(179,232,252);
+uint16_t albumFrame = tft.color565(8,62,82);
+
+void setupTitleSprite(String trackName) {
+  tft.setTextSize(2);
+  int textWidth = tft.textWidth(trackName);
+  titleSprite.deleteSprite();
+  if (textWidth > 140) {
+    // need to setup scroll
+    singleLoopWidth = textWidth + 10;
+    int totalSpriteWidth = (textWidth + 10) * 2;
+    titleSprite.createSprite(totalSpriteWidth, 30);
+    titleSprite.fillSprite(backgroundBlue);
+    titleSprite.setTextColor(TFT_BLACK, backgroundBlue);
+    // Draw First Copy
+    titleSprite.setTextSize(2);
+    titleSprite.drawString(trackName, 0, 0);
+    // Draw Second Copy right after the gap
+    titleSprite.drawString(trackName, textWidth + 10, 0);
+  } else {
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_BLACK, backgroundBlue);
+    tft.setCursor(170,130);
+    tft.print(trackName);
+  }
+  scrollPos = 0;
+}
+
+void updateScrollText() {
+  if (!titleSprite.created()) return;
+  if (millis() - lastScrollTime >= scrollSpeed) {
+    lastScrollTime = millis();
+    int spriteWidth = titleSprite.width();
+    if (spriteWidth > 130) {
+      titleSprite.pushSprite(170, 130, scrollPos, 0, 140, 20);
+      scrollPos++;
+      if (scrollPos >= singleLoopWidth) {
+        scrollPos = 0;
+      }
+      // Match 'gap' value above
+
+    // Reset back to 0 right when the second copy lines up with the start position
+    } 
+  }
+}
 
 void drawAlbumArt(String url, int x, int y) {
   HTTPClient http;
@@ -37,7 +84,7 @@ void drawAlbumArt(String url, int x, int y) {
     if (len > 0) {
       uint8_t* buff = (uint8_t*)malloc(len);
       if (buff) {
-        tft.fillRect(10, 10, 152, 152, TFT_BLACK);
+        tft.fillRect(10, 10, 152, 152, albumFrame);
         stream->readBytes(buff, len);
         TJpgDec.drawJpg(x, y, buff, len);
         free(buff);
@@ -72,6 +119,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
     }
     String currentSong = currentlyPlaying.trackName;
     if (currentSong != lastSong || !wasPlaying) {
+      lastSong = currentSong;
       Serial.println("\n--------------------------------");
       Serial.print("Track:  ");
       Serial.println(currentlyPlaying.trackName);
@@ -86,7 +134,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
       tft.setTextSize(2);
       tft.setTextColor(TFT_BLACK, backgroundBlue);
       tft.setCursor(170,130);
-      tft.print(currentlyPlaying.trackName);
+      setupTitleSprite(currentlyPlaying.trackName);
       tft.setTextSize(1);
       tft.setCursor(170, 150);
       tft.print(currentlyPlaying.artists[0].artistName);
@@ -95,6 +143,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
     if (wasPlaying) {
       wasPlaying = false;
       lastAlbumArtUrl = "";
+      lastSong = "";
     }
     tft.fillScreen(backgroundBlue);
     tft.setTextColor(TFT_BLACK, backgroundBlue);
@@ -153,10 +202,11 @@ void loop() {
     lastCheckTime = millis();
     Serial.println("Retrieving currentlyplaying information");
     int status = spotify.getCurrentlyPlaying(printCurrentlyPlaying);
-
+  
     if (status != 200 && status != 204) {
       Serial.print("HTTP Error Code: ");
       Serial.println(status);
     }
   }
+  updateScrollText();
 }
