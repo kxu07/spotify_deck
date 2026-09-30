@@ -8,16 +8,21 @@
 #include <TJpg_Decoder.h>
 #include <lvgl.h>
 #include <XPT2046_Touchscreen.h>
-// TODO: playback widgets + function, offloading to diff processors
+#include <time.h>
+
+// TODO: playback widgets + function, offloading to diff processors, refactor
 
 #define XPT2046_IRQ 36
 #define XPT2046_MOSI 32
 #define XPT2046_MISO 39
 #define XPT2046_CLK  25
 #define XPT2046_CS   33
+#define CYD_BACKLIGHT_PIN 21
 
 const char* ssid = "Device-Northwestern";
 const char* password = "";
+const char* ntpServer = "pool.ntp.org";
+const char* timeZone = "CST6CDT,M3.2.0,M11.1.0";
 const char* clientId = "15305a1ef8a8454a9575d0ed2f05e2ca";
 const char* clientSecret = "7d637dfb0ba341ff8d8be0342c0dbbc1";
 const char* refreshToken = "AQBj92TmuMIZ3VHt9MJkAkUs9EesUR3mA99xAxAORm6JNTVJ7zWGx-4Ktk5tkEmo97k_ZAGFkE43VGWlzoWTcLAc-vweP8vbpaqvqDwmYGVBgepCiXL7mRHg4Y_lCCtoZfE";
@@ -31,6 +36,7 @@ unsigned long lastScrollTime = 0;
 const int scrollSpeed = 30;
 int singleLoopWidth = 0;
 bool isPlayingState = false;
+unsigned long lastClockUpdate = 0;
 
 unsigned long lastCheckTime = 0;
 const unsigned long checkInterval = 5000;
@@ -47,7 +53,52 @@ void setupTouch() {
   touchscreen.setRotation(1); // Match screen rotation
 }
 
+void setupTime() {
+  configTzTime(timeZone, ntpServer);
+  Serial.print("Synchronizing time");
+  
+  struct tm timeinfo;
+  int retryCount = 0;
+  const int maxRetries = 10; // 10 attempts * 300ms = 3 second max timeout
 
+  while (!getLocalTime(&timeinfo) && retryCount < maxRetries) {
+    Serial.print(".");
+    delay(300);
+    retryCount++;
+  }
+
+  if (retryCount < maxRetries) {
+    Serial.println("\nTime synchronized successfully!");
+  } else {
+    Serial.println("\nNTP sync timed out — clock will sync in background.");
+  }
+}
+
+void printCurrentTime() {
+  struct tm timeinfo;
+
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  char timeString[20];
+  strftime(timeString, sizeof(timeString), "%I:%M:%S %p", &timeinfo);
+  char dateString[20];
+  strftime(dateString, sizeof(dateString), "%b %d, %y", &timeinfo);
+}
+
+void displayTime() {
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    char timeBuffer[10]; 
+    strftime(timeBuffer, sizeof(timeBuffer), "%I:%M %p", &timeinfo);
+    tft.setTextSize(1);
+    tft.setTextColor(TFT_BLACK, backgroundBlue);
+    tft.setTextDatum(TR_DATUM); // Set alignment to Top-Right
+    tft.drawString(timeBuffer, 310, 10); // Draw directly relative to X=310
+    tft.setTextDatum(TL_DATUM);
+  }
+}
 
 void drawMediaControls() {
   int btnW = 40;
@@ -215,7 +266,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
     if (currentArt != lastAlbumArtUrl || !wasPlaying) {
       lastAlbumArtUrl = currentArt;
       wasPlaying = true;
-      tft.fillScreen(backgroundBlue);
+      tft.fillRect(5, 5, 157, 157, backgroundBlue);
       drawAlbumArt(currentArt, 11, 11);
     }
     String currentSong = currentlyPlaying.trackName;
@@ -240,6 +291,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
       tft.setTextSize(1);
       tft.setCursor(170, 150);
       tft.print(currentlyPlaying.artists[0].artistName);
+      displayTime();
     }
   } else if (false) {
     if (wasPlaying) {
@@ -255,10 +307,21 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
   }
 }
 
+void turnOffBackLight() {
+  digitalWrite(CYD_BACKLIGHT_PIN, HIGH);
+}
+
+void turnOnBackLight() {
+  digitalWrite(CYD_BACKLIGHT_PIN, LOW);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
   setupTouch();
+  setupTime();
+  pinMode(CYD_BACKLIGHT_PIN, OUTPUT);
+  digitalWrite(CYD_BACKLIGHT_PIN, LOW);
   tft.init();
   tft.setRotation(1);
   tft.fillScreen(TFT_WHITE);
@@ -292,23 +355,16 @@ void setup() {
   } else {
     Serial.println("Failed to get Access Token. Check your credentials.");
   }
-  tft.fillScreen(TFT_WHITE);
+  tft.fillScreen(backgroundBlue);
   tft.drawCentreString("Everything connected, booting ...", 160, 115, 3);
   TJpgDec.setJpgScale(2);
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tft_output);
 }
-void checkTouchDiagnostic() {
-  if (touchscreen.touched()) {
-    TS_Point p = touchscreen.getPoint();
-    Serial.printf("Touch Registered! Raw X: %d | Raw Y: %d | Pressure Z: %d\n", p.x, p.y, p.z);
-    delay(100);
-  }
-}
+
 
 void loop() {
   checkTouch();
-  checkTouchDiagnostic();
   if (millis() - lastCheckTime > checkInterval) {
     lastCheckTime = millis();
     Serial.println("Retrieving currentlyplaying information");
@@ -319,5 +375,10 @@ void loop() {
       Serial.println(status);
     }
   }
+  if (millis() - lastClockUpdate >= 10000) {
+    lastClockUpdate = millis();
+    displayTime();
+  }
   updateScrollText();
+
 }
