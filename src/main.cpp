@@ -96,6 +96,9 @@ void displayTime() {
     tft.setTextColor(TFT_BLACK, backgroundBlue);
     tft.setTextDatum(TR_DATUM); // Set alignment to Top-Right
     tft.drawString(timeBuffer, 310, 10); // Draw directly relative to X=310
+    char dateBuffer[20];
+    strftime(dateBuffer, sizeof(dateBuffer), "%a, %b %d", &timeinfo);
+    tft.drawString(dateBuffer, 310, 20);
     tft.setTextDatum(TL_DATUM);
   }
 }
@@ -318,17 +321,15 @@ void turnOnBackLight() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
+  tft.fillScreen(TFT_BLUE);
   setupTouch();
-  setupTime();
   pinMode(CYD_BACKLIGHT_PIN, OUTPUT);
   digitalWrite(CYD_BACKLIGHT_PIN, LOW);
   tft.init();
   tft.setRotation(1);
+  setupTime();
   tft.fillScreen(TFT_WHITE);
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-
-  tft.drawCentreString("Connecting to WiFi", 160, 115, 3);
-
+  tft.setTextColor(TFT_BLACK, TFT_BLACK);
   Serial.println("Start wifi connection");
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -343,8 +344,6 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  Serial.print("MAC address: ");
-  Serial.println(WiFi.macAddress());
   client.setInsecure();
   tft.fillScreen(TFT_WHITE);
   tft.drawCentreString("Connecting to Spotify", 160, 115, 3);
