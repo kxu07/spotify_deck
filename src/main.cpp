@@ -184,6 +184,37 @@ void checkTouch() {
   }
 }
 
+void checkOvernightSleep() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return ;
+  int currentHour = timeinfo.tm_hour;
+  const int SLEEP_START = 23;
+  const int SLEEP_END = 8;
+  bool isOvernight = (currentHour >= SLEEP_START || currentHour <= SLEEP_END);
+  if (isOvernight) {
+    int targetHour = SLEEP_END;
+    if (currentHour >= SLEEP_START) {
+      targetHour += 24;
+    }
+    int hoursToSleep   = SLEEP_END - currentHour - 1;
+    int minutesToSleep = 59 - timeinfo.tm_min;
+    int secondsToSleep = 60 - timeinfo.tm_sec;
+
+    uint64_t totalSleepSeconds = (hoursToSleep * 3600) + (minutesToSleep * 60) + secondsToSleep;
+
+    Serial.printf("Sleeping for %llu seconds (%llu hours)...\n", 
+                  totalSleepSeconds, totalSleepSeconds / 3600);
+
+    // 2. Shut down CYD display & backlight
+    digitalWrite(CYD_BACKLIGHT_PIN, HIGH); // Turn off backlight (Active LOW)
+    tft.writecommand(0x10);                // SPI display sleep mode command (ST7789/ILI9341)
+
+    // 3. Configure ESP32 timer wakeup and enter deep sleep
+    esp_sleep_enable_timer_wakeup(totalSleepSeconds * 1000000ULL);
+    esp_deep_sleep_start();
+  }
+}
+
 void setupTitleSprite(String trackName) {
   tft.setTextSize(2);
   int textWidth = tft.textWidth(trackName);
@@ -377,6 +408,7 @@ void loop() {
   if (millis() - lastClockUpdate >= 10000) {
     lastClockUpdate = millis();
     displayTime();
+    checkOvernightSleep();
   }
   updateScrollText();
 
