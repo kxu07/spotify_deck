@@ -1,51 +1,8 @@
 #include <Arduino.h>
-#include "esp_mac.h"
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <SpotifyArduino.h>
-#include <TFT_eSPI.h>
-#include <HTTPClient.h>
-#include <TJpg_Decoder.h>
-#include <lvgl.h>
-#include <XPT2046_Touchscreen.h>
-#include <time.h>
+#include "config.h"
 
 // TODO: playback widgets + function, offloading to diff processors, refactor
-
-#define XPT2046_IRQ 36
-#define XPT2046_MOSI 32
-#define XPT2046_MISO 39
-#define XPT2046_CLK  25
-#define XPT2046_CS   33
-#define CYD_BACKLIGHT_PIN 21
-
-const char* ssid = "Device-Northwestern";
-const char* password = "";
-const char* ntpServer = "pool.ntp.org";
-const char* timeZone = "CST6CDT,M3.2.0,M11.1.0";
-const char* clientId = "15305a1ef8a8454a9575d0ed2f05e2ca";
-const char* clientSecret = "";
-const char* refreshToken = "AQBj92TmuMIZ3VHt9MJkAkUs9EesUR3mA99xAxAORm6JNTVJ7zWGx-4Ktk5tkEmo97k_ZAGFkE43VGWlzoWTcLAc-vweP8vbpaqvqDwmYGVBgepCiXL7mRHg4Y_lCCtoZfE";
-
-WiFiClientSecure client;
-SpotifyArduino spotify(client, clientId, clientSecret, refreshToken);
-TFT_eSPI tft = TFT_eSPI();
-TFT_eSprite titleSprite = TFT_eSprite(&tft);
-int scrollPos = 0;
-unsigned long lastScrollTime = 0;
-const int scrollSpeed = 30;
-int singleLoopWidth = 0;
-bool isPlayingState = false;
-unsigned long lastClockUpdate = 0;
-
-unsigned long lastCheckTime = 0;
-const unsigned long checkInterval = 5000;
-
-uint16_t backgroundBlue = tft.color565(179,232,252);
-uint16_t albumFrame = tft.color565(8,62,82);
-
-SPIClass touchSpi = SPIClass(VSPI);
-XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 
 void setupTouch() {
   touchSpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
@@ -110,7 +67,7 @@ void drawMediaControls() {
   
   // Center horizontally on full 320px screen: (320 - (40*3 + 15*2)) / 2 = 85
   int startX = 80; 
-  int startY = 180; // Placed at bottom margin
+  int startY = 170; // Placed at bottom margin
 
   for (int i = 0; i < 3; i++) {
     int x = startX + i * (btnW + gap);
@@ -131,8 +88,16 @@ void drawMediaControls() {
     } 
     else if (i == 1) {
       // PLAY ICON (>) - Total width: 12px
-      int iconX = x + (btnW - 12) / 2;
-      tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 12, iconY + 7, TFT_BLACK);
+      if (isPlayingState == false) {
+        int iconX = x + (btnW - 12) / 2;
+        tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 12, iconY + 7, TFT_BLACK);
+      } else {
+        int barW = 4;
+        int barGap = 4;
+        int iconX = x + (btnW - (barW*2+barGap)) / 2;
+        tft.fillRect(iconX, iconY, barW, 14, TFT_BLACK);
+        tft.fillRect(iconX+barW+barGap, iconY, barW, 14, TFT_BLACK);
+      }
     } 
     else if (i == 2) {
       // NEXT ICON (>>|) - Total width: 15px
@@ -155,7 +120,7 @@ void checkTouch() {
 
       Serial.printf("RAW: X=%d Y=%d Z=%d | MAPPED: X=%d Y=%d\n", p.x, p.y, p.z, x, y);
 
-      if (y >= 190 && y <= 225) {
+      if (y >= 170 && y <= 205) {
         if (x >= 85 && x <= 125) {
           Serial.println("Spotify: Skip Previous");
           spotify.previousTrack();
@@ -171,6 +136,7 @@ void checkTouch() {
             spotify.play();
             isPlayingState = true;  // Optimistically update state
           }
+          drawMediaControls();
           lastCheckTime = 0;
           delay(300);
         } else if (x >= 195 && x <= 235) {
@@ -196,7 +162,7 @@ void checkOvernightSleep() {
     if (currentHour >= SLEEP_START) {
       targetHour += 24;
     }
-    int hoursToSleep   = SLEEP_END - currentHour - 1;
+    int hoursToSleep   = targetHour - currentHour - 1;
     int minutesToSleep = 59 - timeinfo.tm_min;
     int secondsToSleep = 60 - timeinfo.tm_sec;
 
@@ -300,7 +266,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
     if (currentArt != lastAlbumArtUrl || !wasPlaying) {
       lastAlbumArtUrl = currentArt;
       wasPlaying = true;
-      tft.fillRect(5, 5, 157, 157, backgroundBlue);
+      tft.fillRect(0, 5, 162, 163, backgroundBlue);
       drawAlbumArt(currentArt, 11, 11);
     }
     String currentSong = currentlyPlaying.trackName;
