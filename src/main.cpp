@@ -16,7 +16,7 @@ void setupTime() {
   
   struct tm timeinfo;
   int retryCount = 0;
-  const int maxRetries = 10; // 10 attempts * 300ms = 3 second max timeout
+  const int maxRetries = 8; // 8 attempts * 300ms 
 
   while (!getLocalTime(&timeinfo) && retryCount < maxRetries) {
     Serial.print(".");
@@ -60,6 +60,26 @@ void displayTime() {
   }
 }
 
+void updatePlayButton() {
+  int btnW = 40;
+  int btnH = 35;
+  int gap = 20;
+  int startX = 80; 
+  int startY = 170;
+  int iconY = startY + (btnH - 14) / 2; // Y = 200
+  int x = startX + (btnW + gap);
+  if (isPlayingState == false) {
+    int iconX = x + (btnW - 12) / 2;
+    tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 12, iconY + 7, TFT_BLACK);
+  } else {
+    int barW = 4;
+    int barGap = 4;
+    int iconX = x + (btnW - (barW*2+barGap)) / 2;
+    tft.fillRect(iconX, iconY, barW, 14, TFT_BLACK);
+    tft.fillRect(iconX+barW+barGap, iconY, barW, 14, TFT_BLACK);
+  }
+}
+
 void drawMediaControls() {
   int btnW = 40;
   int btnH = 35;
@@ -88,16 +108,7 @@ void drawMediaControls() {
     } 
     else if (i == 1) {
       // PLAY ICON (>) - Total width: 12px
-      if (isPlayingState == false) {
-        int iconX = x + (btnW - 12) / 2;
-        tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 12, iconY + 7, TFT_BLACK);
-      } else {
-        int barW = 4;
-        int barGap = 4;
-        int iconX = x + (btnW - (barW*2+barGap)) / 2;
-        tft.fillRect(iconX, iconY, barW, 14, TFT_BLACK);
-        tft.fillRect(iconX+barW+barGap, iconY, barW, 14, TFT_BLACK);
-      }
+      updatePlayButton();
     } 
     else if (i == 2) {
       // NEXT ICON (>>|) - Total width: 15px
@@ -105,6 +116,38 @@ void drawMediaControls() {
       tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 11, iconY + 7, TFT_BLACK); // Triangle
       tft.fillRect(iconX + 12, iconY, 3, 14, TFT_BLACK); // Right bar
     }
+  }
+}
+
+void drawProgressBar() {
+  if (durationMs <= 0) return;
+
+  // Calculate local elapsed progress since last API fetch
+  long currentProgress = progressMs;
+  if (isPlayingState) {
+    currentProgress += (millis() - lastProgressUpdate);
+  }
+
+  // Cap currentProgress at durationMs
+  if (currentProgress > durationMs) {
+    currentProgress = durationMs;
+  }
+
+  // UI Dimensions for Progress Bar
+  int barX = 20;
+  int barY = 213;
+  int barWidth = 280;
+  int barHeight = 4;
+
+  // Calculate filled pixel width based on percentage ratio
+  int fillWidth = map(currentProgress, 0, durationMs, 0, barWidth);
+
+  // 1. Draw Background Track (Gray)
+  tft.fillRect(barX, barY, barWidth, barHeight, TFT_DARKGREY);
+
+  // 2. Draw Active Fill Line (White or Spotify Green)
+  if (fillWidth > 0) {
+    tft.fillRect(barX, barY, fillWidth, barHeight, TFT_WHITE);
   }
 }
 
@@ -136,7 +179,6 @@ void checkTouch() {
             spotify.play();
             isPlayingState = true;  // Optimistically update state
           }
-          drawMediaControls();
           lastCheckTime = 0;
           delay(300);
         } else if (x >= 195 && x <= 235) {
@@ -156,7 +198,7 @@ void checkOvernightSleep() {
   int currentHour = timeinfo.tm_hour;
   const int SLEEP_START = 23;
   const int SLEEP_END = 8;
-  bool isOvernight = (currentHour >= SLEEP_START || currentHour <= SLEEP_END);
+  bool isOvernight = (currentHour >= SLEEP_START || currentHour < SLEEP_END);
   if (isOvernight) {
     int targetHour = SLEEP_END;
     if (currentHour >= SLEEP_START) {
@@ -261,8 +303,12 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
   static String lastSong = "";
   static bool wasPlaying=false;
   isPlayingState = currentlyPlaying.isPlaying;
+  updatePlayButton();
   if (currentlyPlaying.isPlaying) {
     String currentArt = currentlyPlaying.albumImages[1].url;
+    progressMs = currentlyPlaying.progressMs;
+    durationMs = currentlyPlaying.durationMs;
+    lastProgressUpdate = millis();
     if (currentArt != lastAlbumArtUrl || !wasPlaying) {
       lastAlbumArtUrl = currentArt;
       wasPlaying = true;
@@ -271,7 +317,7 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
     }
     String currentSong = currentlyPlaying.trackName;
     if (currentSong != lastSong || !wasPlaying) {
-      drawMediaControls();
+      updatePlayButton();
       lastSong = currentSong;
       Serial.println("\n--------------------------------");
       Serial.print("Track:  ");
@@ -292,19 +338,24 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
       tft.setCursor(170, 150);
       tft.print(currentlyPlaying.artists[0].artistName);
       displayTime();
+      drawProgressBar();
     }
-  } else if (false) {
-    if (wasPlaying) {
-      wasPlaying = false;
-      lastAlbumArtUrl = "";
-      lastSong = "";
+  } else  {
+    isPlayingState = false;
+    updatePlayButton();
+    if (false) {
+      if (wasPlaying) {
+        wasPlaying = false;
+        lastAlbumArtUrl = "";
+        lastSong = "";
+      }
+      tft.fillScreen(backgroundBlue);
+      tft.setTextColor(TFT_BLACK, backgroundBlue);
+      titleSprite.deleteSprite();
+      Serial.println("Spotify is idle or paused");
+      tft.drawCentreString("Spotify not playing", 160, 115, 4);
     }
-    tft.fillScreen(backgroundBlue);
-    tft.setTextColor(TFT_BLACK, backgroundBlue);
-    titleSprite.deleteSprite();
-    Serial.println("Spotify is idle or paused");
-    tft.drawCentreString("Spotify not playing", 160, 115, 4);
-  }
+}
 }
 
 void turnOffBackLight() {
@@ -356,6 +407,7 @@ void setup() {
   TJpgDec.setJpgScale(2);
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tft_output);
+  drawMediaControls();
 }
 
 
@@ -365,11 +417,20 @@ void loop() {
     lastCheckTime = millis();
     Serial.println("Retrieving currentlyplaying information");
     int status = spotify.getCurrentlyPlaying(printCurrentlyPlaying);
-  
+    if (status == 401 || status < 0) {
+      Serial.println("Token expired");
+      if (spotify.refreshAccessToken()) {
+        Serial.println("Token refreshed");
+      }
+    }
     if (status != 200 && status != 204) {
       Serial.print("HTTP Error Code: ");
       Serial.println(status);
     }
+  }
+  if (isPlayingState && (millis() - lastProgressUpdate >= 1500)) {
+    lastProgressUpdate = millis();
+    drawProgressBar();
   }
   if (millis() - lastClockUpdate >= 10000) {
     lastClockUpdate = millis();

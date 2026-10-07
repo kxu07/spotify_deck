@@ -44,6 +44,9 @@ extern bool isPlayingState;
 extern unsigned long lastClockUpdate;
 extern unsigned long lastCheckTime;
 extern const unsigned long checkInterval;
+extern long progressMs;
+extern long durationMs;
+extern unsigned long lastProgressUpdate;
 
 extern uint16_t backgroundBlue;
 extern uint16_t albumFrame;
