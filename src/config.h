@@ -9,7 +9,6 @@
 #include <TFT_eSPI.h>
 #include <HTTPClient.h>
 #include <TJpg_Decoder.h>
-#include <lvgl.h>
 #include <XPT2046_Touchscreen.h>
 #include <time.h>
 
