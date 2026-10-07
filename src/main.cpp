@@ -68,6 +68,8 @@ void updatePlayButton() {
   int startY = 170;
   int iconY = startY + (btnH - 14) / 2; // Y = 200
   int x = startX + (btnW + gap);
+  tft.fillRect(x, startY, btnW, btnH, backgroundBlue);
+  tft.drawRect(x, startY, btnW, btnH, backgroundBlue);
   if (isPlayingState == false) {
     int iconX = x + (btnW - 12) / 2;
     tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 12, iconY + 7, TFT_BLACK);
@@ -238,7 +240,7 @@ void setupTitleSprite(String trackName) {
     titleSprite.setTextSize(2);
     titleSprite.drawString(trackName, 0, 0);
     // Draw Second Copy right after the gap
-    titleSprite.drawString(trackName, textWidth + 10, 0);
+    titleSprite.drawString(trackName, textWidth + 15, 0);
   } else {
     tft.setTextSize(2);
     tft.setTextColor(TFT_BLACK, backgroundBlue);
@@ -375,6 +377,8 @@ void setup() {
   digitalWrite(CYD_BACKLIGHT_PIN, LOW);
   tft.init();
   tft.setRotation(1);
+  tft.setTextColor(TFT_BLACK);
+  tft.drawCentreString("syncing time", 160, 115, 3);
   setupTime();
   tft.fillScreen(TFT_WHITE);
   tft.setTextColor(TFT_BLACK, TFT_BLACK);
@@ -428,7 +432,7 @@ void loop() {
       Serial.println(status);
     }
   }
-  if (isPlayingState && (millis() - lastProgressUpdate >= 1500)) {
+  if (isPlayingState && (millis() - lastProgressUpdate >= 1000)) {
     lastProgressUpdate = millis();
     drawProgressBar();
   }
