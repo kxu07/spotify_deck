@@ -11,6 +11,9 @@
 #include <TJpg_Decoder.h>
 #include <XPT2046_Touchscreen.h>
 #include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 
 // TODO: playback widgets + function, offloading to diff processors, refactor
 
@@ -52,5 +55,7 @@ extern uint16_t albumFrame;
 
 extern SPIClass touchSpi;
 extern XPT2046_Touchscreen touchscreen;
+
+extern SemaphoreHandle_t tftMutex;
 
 #endif

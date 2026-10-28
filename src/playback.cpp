@@ -12,17 +12,26 @@ void updatePlayButton() {
   int startY = 170;
   int iconY = startY + (btnH - 14) / 2; // Y = 200
   int x = startX + (btnW + gap);
-  tft.fillRect(x, startY, btnW, btnH, backgroundBlue);
-  tft.drawRect(x, startY, btnW, btnH, backgroundBlue);
+  if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+    tft.fillRect(x, startY, btnW, btnH, backgroundBlue);
+    tft.drawRect(x, startY, btnW, btnH, backgroundBlue);
+    xSemaphoreGive(tftMutex);
+  }
   if (isPlayingState == false) {
     int iconX = x + (btnW - 12) / 2;
-    tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 12, iconY + 7, TFT_BLACK);
+    if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+      tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 12, iconY + 7, TFT_BLACK);
+      xSemaphoreGive(tftMutex);
+    }
   } else {
     int barW = 4;
     int barGap = 4;
     int iconX = x + (btnW - (barW*2+barGap)) / 2;
-    tft.fillRect(iconX, iconY, barW, 14, TFT_BLACK);
-    tft.fillRect(iconX+barW+barGap, iconY, barW, 14, TFT_BLACK);
+    if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+      tft.fillRect(iconX, iconY, barW, 14, TFT_BLACK);
+      tft.fillRect(iconX+barW+barGap, iconY, barW, 14, TFT_BLACK);
+      xSemaphoreGive(tftMutex);
+    }
   }
 }
 
@@ -38,9 +47,11 @@ void drawMediaControls() {
   for (int i = 0; i < 3; i++) {
     int x = startX + i * (btnW + gap);
     
-    // 1. Draw Button Box
-    tft.fillRect(x, startY, btnW, btnH, backgroundBlue);
-    tft.drawRect(x, startY, btnW, btnH, backgroundBlue);
+    if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+      tft.fillRect(x, startY, btnW, btnH, backgroundBlue);
+      tft.drawRect(x, startY, btnW, btnH, backgroundBlue);
+      xSemaphoreGive(tftMutex);
+    }
 
     // Vertical center offset for 14px icons in a 35px box
     int iconY = startY + (btnH - 14) / 2; // Y = 200
@@ -49,8 +60,11 @@ void drawMediaControls() {
     if (i == 0) {
       // PREVIOUS ICON (|<<) - Total width: 15px
       int iconX = x + (btnW - 15) / 2;
-      tft.fillRect(iconX, iconY, 3, 14, TFT_BLACK); // Left bar
-      tft.fillTriangle(iconX + 15, iconY, iconX + 15, iconY + 14, iconX + 4, iconY + 7, TFT_BLACK); // Triangle
+      if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+        tft.fillRect(iconX, iconY, 3, 14, TFT_BLACK); // Left bar
+        tft.fillTriangle(iconX + 15, iconY, iconX + 15, iconY + 14, iconX + 4, iconY + 7, TFT_BLACK); 
+        xSemaphoreGive(tftMutex);
+      }
     } 
     else if (i == 1) {
       // PLAY ICON (>) - Total width: 12px
@@ -59,8 +73,11 @@ void drawMediaControls() {
     else if (i == 2) {
       // NEXT ICON (>>|) - Total width: 15px
       int iconX = x + (btnW - 15) / 2;
-      tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 11, iconY + 7, TFT_BLACK); // Triangle
-      tft.fillRect(iconX + 12, iconY, 3, 14, TFT_BLACK); // Right bar
+      if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+        tft.fillTriangle(iconX, iconY, iconX, iconY + 14, iconX + 11, iconY + 7, TFT_BLACK); // Triangle
+        tft.fillRect(iconX + 12, iconY, 3, 14, TFT_BLACK); // Right bar
+        xSemaphoreGive(tftMutex);
+      }
     }
   }
 }
@@ -89,35 +106,41 @@ void drawProgressBar() {
   int fillWidth = map(currentProgress, 0, durationMs, 0, barWidth);
 
   // 1. Draw Background Track (Gray)
-  tft.fillRect(barX, barY, barWidth, barHeight, TFT_DARKGREY);
+  if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+    tft.fillRect(barX, barY, barWidth, barHeight, TFT_DARKGREY);
 
-  // 2. Draw Active Fill Line (White or Spotify Green)
-  if (fillWidth > 0) {
-    tft.fillRect(barX, barY, fillWidth, barHeight, TFT_WHITE);
+    // 2. Draw Active Fill Line (White or Spotify Green)
+    if (fillWidth > 0) {
+      tft.fillRect(barX, barY, fillWidth, barHeight, TFT_WHITE);
+    }
+    xSemaphoreGive(tftMutex);
   }
 }
 
 void setupTitleSprite(String trackName) {
   tft.setTextSize(2);
   int textWidth = tft.textWidth(trackName);
-  titleSprite.deleteSprite();
-  if (textWidth > 140) {
-    // need to setup scroll
-    singleLoopWidth = textWidth + 10;
-    int totalSpriteWidth = (textWidth + 10) * 2;
-    titleSprite.createSprite(totalSpriteWidth, 30);
-    titleSprite.fillSprite(backgroundBlue);
-    titleSprite.setTextColor(TFT_BLACK, backgroundBlue);
-    // Draw First Copy
-    titleSprite.setTextSize(2);
-    titleSprite.drawString(trackName, 0, 0);
-    // Draw Second Copy right after the gap
-    titleSprite.drawString(trackName, textWidth + 15, 0);
-  } else {
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_BLACK, backgroundBlue);
-    tft.setCursor(170,130);
-    tft.print(trackName);
+  if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+    titleSprite.deleteSprite();
+    if (textWidth > 140) {
+      // need to setup scroll
+      singleLoopWidth = textWidth + 10;
+      int totalSpriteWidth = (textWidth + 10) * 2;
+      titleSprite.createSprite(totalSpriteWidth, 30);
+      titleSprite.fillSprite(backgroundBlue);
+      titleSprite.setTextColor(TFT_BLACK, backgroundBlue);
+      // Draw First Copy
+      titleSprite.setTextSize(2);
+      titleSprite.drawString(trackName, 0, 0);
+      // Draw Second Copy right after the gap
+      titleSprite.drawString(trackName, textWidth + 15, 0);
+    } else {
+      tft.setTextSize(2);
+      tft.setTextColor(TFT_BLACK, backgroundBlue);
+      tft.setCursor(170,130);
+      tft.print(trackName);
+    }
+    xSemaphoreGive(tftMutex);
   }
   scrollPos = 0;
 }
@@ -128,7 +151,11 @@ void updateScrollText() {
     lastScrollTime = millis();
     int spriteWidth = titleSprite.width();
     if (spriteWidth > 130) {
-      titleSprite.pushSprite(170, 130, scrollPos, 0, 140, 20);
+      if (xSemaphoreTake(tftMutex, (TickType_t)50) == pdTRUE) {
+        titleSprite.pushSprite(170, 130, scrollPos, 0, 140, 20);
+        xSemaphoreGive(tftMutex);
+      }
+
       scrollPos++;
       if (scrollPos >= singleLoopWidth) {
         scrollPos = 0;
@@ -177,7 +204,10 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
     if (currentArt != lastAlbumArtUrl || !wasPlaying) {
       lastAlbumArtUrl = currentArt;
       wasPlaying = true;
-      tft.fillRect(0, 5, 162, 163, backgroundBlue);
+      if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+        tft.fillRect(0, 5, 162, 163, backgroundBlue);
+        xSemaphoreGive(tftMutex);
+      }
       drawAlbumArt(currentArt, 11, 11);
     }
     String currentSong = currentlyPlaying.trackName;
@@ -193,15 +223,21 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
       Serial.println(currentlyPlaying.albumName);
 
       // reset 
-      tft.fillRect(165, 120, 155, 45, backgroundBlue);
+      if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+        tft.fillRect(165, 120, 155, 45, backgroundBlue);
 
-      tft.setTextSize(2);
-      tft.setTextColor(TFT_BLACK, backgroundBlue);
-      tft.setCursor(170,130);
+        tft.setTextSize(2);
+        tft.setTextColor(TFT_BLACK, backgroundBlue);
+        tft.setCursor(170,130);
+        xSemaphoreGive(tftMutex);
+      }
       setupTitleSprite(currentlyPlaying.trackName);
-      tft.setTextSize(1);
-      tft.setCursor(170, 150);
-      tft.print(currentlyPlaying.artists[0].artistName);
+      if (xSemaphoreTake(tftMutex, (TickType_t)50) == pdTRUE) {
+        tft.setTextSize(1);
+        tft.setCursor(170, 150);
+        tft.print(currentlyPlaying.artists[0].artistName);
+        xSemaphoreGive(tftMutex);
+      }
       displayTime();
       drawProgressBar();
     }
@@ -214,11 +250,14 @@ void printCurrentlyPlaying(CurrentlyPlaying currentlyPlaying) {
         lastAlbumArtUrl = "";
         lastSong = "";
       }
-      tft.fillScreen(backgroundBlue);
-      tft.setTextColor(TFT_BLACK, backgroundBlue);
-      titleSprite.deleteSprite();
-      Serial.println("Spotify is idle or paused");
-      tft.drawCentreString("Spotify not playing", 160, 115, 4);
+      if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+        tft.fillScreen(backgroundBlue);
+        tft.setTextColor(TFT_BLACK, backgroundBlue);
+        titleSprite.deleteSprite();
+        Serial.println("Spotify is idle or paused");
+        tft.drawCentreString("Spotify not playing", 160, 115, 4);
+        xSemaphoreGive(tftMutex);
+      }
     }
   }
 }

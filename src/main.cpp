@@ -5,6 +5,9 @@
 
 // TODO: playback widgets + function, offloading to diff processors, refactor
 
+TaskHandle_t apiTaskHandle = NULL;
+TaskHandle_t displayTaskHandle = NULL;
+
 void setupTouch() {
   touchSpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
   touchscreen.begin(touchSpi);
@@ -50,14 +53,17 @@ void displayTime() {
   if (getLocalTime(&timeinfo)) {
     char timeBuffer[10]; 
     strftime(timeBuffer, sizeof(timeBuffer), "%I:%M %p", &timeinfo);
-    tft.setTextSize(1);
-    tft.setTextColor(TFT_BLACK, backgroundBlue);
-    tft.setTextDatum(TR_DATUM); // Set alignment to Top-Right
-    tft.drawString(timeBuffer, 310, 10); // Draw directly relative to X=310
-    char dateBuffer[20];
-    strftime(dateBuffer, sizeof(dateBuffer), "%a, %b %d", &timeinfo);
-    tft.drawString(dateBuffer, 310, 20);
-    tft.setTextDatum(TL_DATUM);
+    if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+      tft.setTextSize(1);
+      tft.setTextColor(TFT_BLACK, backgroundBlue);
+      tft.setTextDatum(TR_DATUM); // Set alignment to Top-Right
+      tft.drawString(timeBuffer, 310, 10); // Draw directly relative to X=310
+      char dateBuffer[20];
+      strftime(dateBuffer, sizeof(dateBuffer), "%a, %b %d", &timeinfo);
+      tft.drawString(dateBuffer, 310, 20);
+      tft.setTextDatum(TL_DATUM);
+      xSemaphoreGive(tftMutex);
+    }
   }
 }
 
@@ -125,7 +131,10 @@ void checkOvernightSleep() {
 
     // 2. Shut down CYD display & backlight
     digitalWrite(CYD_BACKLIGHT_PIN, HIGH); // Turn off backlight (Active LOW)
-    tft.writecommand(0x10);                // SPI display sleep mode command (ST7789/ILI9341)
+    if (xSemaphoreTake(tftMutex, (TickType_t)100) == pdTRUE) {
+      tft.writecommand(0x10);                // SPI display sleep mode command (ST7789/ILI9341)
+      xSemaphoreGive(tftMutex);
+    }
 
     // 3. Configure ESP32 timer wakeup and enter deep sleep
     esp_sleep_enable_timer_wakeup(totalSleepSeconds * 1000000ULL);
@@ -148,6 +157,73 @@ void turnOffBackLight() {
 
 void turnOnBackLight() {
   digitalWrite(CYD_BACKLIGHT_PIN, LOW);
+}
+
+void apiTaskCode(void * pvParameters) {
+  Serial.print("API Task running on core: ");
+  Serial.println(xPortGetCoreID());
+
+  while(true) {
+    // 1. Maintain WiFi connection
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi lost on Core 0! Reconnecting...");
+      WiFi.reconnect();
+    }
+
+    // 2. Poll Spotify API
+    if (millis() - lastCheckTime > checkInterval) {
+      lastCheckTime = millis();
+      Serial.println("Core 0: Retrieving currently playing info...");
+      int status = spotify.getCurrentlyPlaying(printCurrentlyPlaying);
+      
+      if (status == 401 || status < 0) {
+        Serial.println("Token expired");
+        if (spotify.refreshAccessToken()) {
+          Serial.println("Token refreshed");
+        }
+      }
+      if (status != 200 && status != 204) {
+        Serial.print("HTTP Error Code: ");
+        Serial.println(status);
+      }
+    }
+
+    vTaskDelay(100 / portTICK_PERIOD_MS); // Yield to background Wi-Fi tasks
+  }
+}
+
+void displayTaskCode(void * pvParameters) {
+  Serial.print("Display Task running on core: ");
+  Serial.println(xPortGetCoreID());
+
+  unsigned long localClockUpdate = 0;
+  unsigned long localProgressUpdate = 0;
+
+  while(true) {
+    // 1. Touch checks
+    checkTouch();
+
+    // 2. Local Progress Bar Interpolation (every 1 second)
+    if (isPlayingState && (millis() - localProgressUpdate >= 1000)) {
+      localProgressUpdate = millis();
+      if (xSemaphoreTake(tftMutex, (TickType_t)50) == pdTRUE) {
+        drawProgressBar();
+        xSemaphoreGive(tftMutex);
+      }
+    }
+
+    // 3. Clock & Sleep check (every 10 seconds)
+    if (millis() - localClockUpdate >= 10000) {
+      localClockUpdate = millis();
+      displayTime();
+      checkOvernightSleep();
+    }
+
+    // 4. Scroll text frame tick
+    updateScrollText();
+
+    vTaskDelay(20 / portTICK_PERIOD_MS); // Yield to keep responsiveness high
+  }
 }
 
 void setup() {
@@ -194,35 +270,17 @@ void setup() {
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tft_output);
   drawMediaControls();
+
+  xTaskCreatePinnedToCore(
+    apiTaskCode, "ApiTask", 10000, NULL, 1, &apiTaskHandle, 0
+  );
+
+  xTaskCreatePinnedToCore(
+    displayTaskCode, "DisplayTask", 10000, NULL, 2, &displayTaskHandle, 1
+  );
 }
 
 
 void loop() {
-  checkTouch();
-  if (millis() - lastCheckTime > checkInterval) {
-    lastCheckTime = millis();
-    Serial.println("Retrieving currentlyplaying information");
-    int status = spotify.getCurrentlyPlaying(printCurrentlyPlaying);
-    if (status == 401 || status < 0) {
-      Serial.println("Token expired");
-      if (spotify.refreshAccessToken()) {
-        Serial.println("Token refreshed");
-      }
-    }
-    if (status != 200 && status != 204) {
-      Serial.print("HTTP Error Code: ");
-      Serial.println(status);
-    }
-  }
-  if (isPlayingState && (millis() - lastProgressUpdate >= 1000)) {
-    lastProgressUpdate = millis();
-    drawProgressBar();
-  }
-  if (millis() - lastClockUpdate >= 10000) {
-    lastClockUpdate = millis();
-    displayTime();
-    checkOvernightSleep();
-  }
-  updateScrollText();
-
+  vTaskDelete(NULL);
 }
