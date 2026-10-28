@@ -206,10 +206,7 @@ void displayTaskCode(void * pvParameters) {
     // 2. Local Progress Bar Interpolation (every 1 second)
     if (isPlayingState && (millis() - localProgressUpdate >= 1000)) {
       localProgressUpdate = millis();
-      if (xSemaphoreTake(tftMutex, (TickType_t)50) == pdTRUE) {
-        drawProgressBar();
-        xSemaphoreGive(tftMutex);
-      }
+      drawProgressBar();
     }
 
     // 3. Clock & Sleep check (every 10 seconds)
