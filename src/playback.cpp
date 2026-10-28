@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "playback.h"
+#include "spirited_away_icon.h"
 
 extern void displayTime();
 
@@ -170,26 +171,37 @@ void updateScrollText() {
 void drawAlbumArt(String url, int x, int y) {
   HTTPClient http;
   http.begin(url);
-
-  int httpCode = http.GET();
-  if (httpCode == HTTP_CODE_OK) {
-    WiFiClient *stream = http.getStreamPtr();
-    int len = http.getSize();
-    if (len > 0) {
-      uint8_t* buff = (uint8_t*)malloc(len);
-      if (buff) {
-        if (xSemaphoreTake(tftMutex, (TickType_t)50) == pdTRUE) {
-          tft.fillRect(10, 10, 152, 152, albumFrame);
-          stream->readBytes(buff, len);
-          TJpgDec.drawJpg(x, y, buff, len);
+  bool success = false;
+  for (int attempt = 1; attempt <= 3; attempt ++) {
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK) {
+      WiFiClient *stream = http.getStreamPtr();
+      int len = http.getSize();
+      if (len > 0) {
+        uint8_t* buff = (uint8_t*)malloc(len);
+        if (buff) {
+          if (xSemaphoreTake(tftMutex, (TickType_t)50) == pdTRUE) {
+            tft.fillRect(10, 10, 152, 152, albumFrame);
+            stream->readBytes(buff, len);
+            TJpgDec.drawJpg(x, y, buff, len);
+            xSemaphoreGive(tftMutex);
+            success = true;
+          }
           free(buff);
-          xSemaphoreGive(tftMutex);
+          return;
         }
-      }
-    } else {
-      Serial.printf("Failed to download image");
+      } 
     }
+  }
   http.end();
+  if (!success) {
+    Serial.println("failed to load album art so here's a placeholder");
+    if (xSemaphoreTake(tftMutex, (TickType_t)50)==pdTRUE) {
+      TJpgDec.setJpgScale(1);
+      TJpgDec.drawJpg(x, y, my_image_jpg, my_image_jpg_len);
+      TJpgDec.setJpgScale(2);
+      xSemaphoreGive(tftMutex);
+    }
   }
 }
 
