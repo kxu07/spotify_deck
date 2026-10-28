@@ -96,7 +96,12 @@ void checkTouch() {
             isPlayingState = true;  // Optimistically update state
           }
           lastCheckTime = 0;
+          if (xSemaphoreTake(tftMutex, (TickType_t)50)==pdTRUE) {
+            updatePlayButton();
+            xSemaphoreGive(tftMutex);
+          }
           delay(300);
+
         } else if (x >= 195 && x <= 235) {
           Serial.println("Spotify: Skip Next");
           spotify.nextTrack();
