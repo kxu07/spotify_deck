@@ -178,10 +178,13 @@ void drawAlbumArt(String url, int x, int y) {
     if (len > 0) {
       uint8_t* buff = (uint8_t*)malloc(len);
       if (buff) {
-        tft.fillRect(10, 10, 152, 152, albumFrame);
-        stream->readBytes(buff, len);
-        TJpgDec.drawJpg(x, y, buff, len);
-        free(buff);
+        if (xSemaphoreTake(tftMutex, (TickType_t)50) == pdTRUE) {
+          tft.fillRect(10, 10, 152, 152, albumFrame);
+          stream->readBytes(buff, len);
+          TJpgDec.drawJpg(x, y, buff, len);
+          free(buff);
+          xSemaphoreGive(tftMutex);
+        }
       }
     } else {
       Serial.printf("Failed to download image");
