@@ -272,6 +272,10 @@ void setup() {
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tft_output);
   drawMediaControls();
+  if (!LittleFS.begin(true)) { // 'true' formats it if mount fails on first boot
+    Serial.println("An Error has occurred while mounting LittleFS");
+    return;
+  }
 
   xTaskCreatePinnedToCore(
     apiTaskCode, "ApiTask", 10000, NULL, 1, &apiTaskHandle, 0
@@ -280,6 +284,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     displayTaskCode, "DisplayTask", 10000, NULL, 2, &displayTaskHandle, 1
   );
+
 }
 
 

@@ -14,6 +14,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <LittleFS.h>
 
 // TODO: playback widgets + function, offloading to diff processors, refactor
 

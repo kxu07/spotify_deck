@@ -172,7 +172,7 @@ void drawAlbumArt(String url, int x, int y) {
   HTTPClient http;
   http.begin(url);
   bool success = false;
-  for (int attempt = 1; attempt <= 3; attempt ++) {
+  for (int attempt = 1; attempt <= 5; attempt ++) {
     int httpCode = http.GET();
     if (httpCode == HTTP_CODE_OK) {
       WiFiClient *stream = http.getStreamPtr();
@@ -180,7 +180,7 @@ void drawAlbumArt(String url, int x, int y) {
       if (len > 0) {
         uint8_t* buff = (uint8_t*)malloc(len);
         if (buff) {
-          if (xSemaphoreTake(tftMutex, (TickType_t)50) == pdTRUE) {
+          if (xSemaphoreTake(tftMutex, (TickType_t)150) == pdTRUE) {
             tft.fillRect(10, 10, 152, 152, albumFrame);
             stream->readBytes(buff, len);
             TJpgDec.drawJpg(x, y, buff, len);
@@ -188,18 +188,21 @@ void drawAlbumArt(String url, int x, int y) {
             success = true;
           }
           free(buff);
-          return;
+          
+          break;
         }
       } 
     }
+    vTaskDelay(pdMS_TO_TICKS(500));
   }
   http.end();
   if (!success) {
     Serial.println("failed to load album art so here's a placeholder");
-    if (xSemaphoreTake(tftMutex, (TickType_t)50)==pdTRUE) {
-      TJpgDec.setJpgScale(1);
-      TJpgDec.drawJpg(x, y, my_image_jpg, my_image_jpg_len);
+    if (xSemaphoreTake(tftMutex, (TickType_t)500)==pdTRUE) {
+      tft.fillRect(10, 10, 152, 152, albumFrame);
+      TJpgDec.drawJpg(x, y, my_image_jpg, my_image_jpg_len); 
       TJpgDec.setJpgScale(2);
+      
       xSemaphoreGive(tftMutex);
     }
   }
